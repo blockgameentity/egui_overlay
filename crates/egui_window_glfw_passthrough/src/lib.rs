@@ -59,6 +59,8 @@ pub struct GlfwBackend {
     /// if the window is mouse_passthrough or not.
     /// We cache this, to avoid redundant calls to [glfw::Window::set_mouse_passthrough]
     pub passthrough: bool,
+    pub transparent: bool,
+    pub shown: bool,
     // #[cfg(feature = "wayland")]
     // pub input_region: wayland_client::protocol::wl_region::WlRegion,
     pub events_receiver: glfw::GlfwReceiver<(f64, WindowEvent)>,
@@ -123,6 +125,9 @@ impl GlfwBackend {
 
         if let Some(transparent) = transparent_window {
             glfw_context.window_hint(WindowHint::TransparentFramebuffer(transparent));
+            if transparent {
+                glfw_context.window_hint(WindowHint::Visible(false));
+            }
         }
         if let Some(opengl_window) = opengl_window {
             if opengl_window {
@@ -233,7 +238,7 @@ impl GlfwBackend {
             ..Default::default()
         };
         tracing::info!(
-            "GlfwBackend created. 
+            "GlfwBackend created.
         physical_size: {physical_width}, {physical_height};
         logical_size: {logical_width}, {logical_height};
         virtual_size: {virtual_width}, {virtual_height};
@@ -242,6 +247,8 @@ impl GlfwBackend {
         "
         );
         let pass = window.is_mouse_passthrough();
+
+        let transparent = transparent_window.unwrap_or(false);
 
         Self {
             glfw: glfw_context,
@@ -266,6 +273,8 @@ impl GlfwBackend {
             focused: focus,
             modifiers: Modifiers::empty(),
             passthrough: pass,
+            transparent,
+            shown: false,
         }
     }
     /// returns raw input and scale. `scale` is only Some, if it changed (or if first frame). Otherwise it just returns None.

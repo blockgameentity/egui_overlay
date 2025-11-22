@@ -83,6 +83,10 @@ pub trait EguiOverlay {
         glfw_backend: &mut GlfwBackend,
     ) -> Option<(PlatformOutput, Duration)> {
         let input = glfw_backend.take_raw_input();
+        if !glfw_backend.shown && glfw_backend.transparent {
+            glfw_backend.window.show();
+            glfw_backend.shown = true;
+        }
         // takes a closure that can provide latest framebuffer size.
         // because some backends like vulkan/wgpu won't work without reconfiguring the surface after some sort of resize event unless you give it the latest size
         default_gfx_backend.prepare_frame(|| {
