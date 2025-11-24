@@ -13,23 +13,9 @@ use egui_render_wgpu::WgpuBackend as DefaultGfxBackend;
 pub use egui_window_glfw_passthrough;
 use egui_window_glfw_passthrough::{GlfwBackend, GlfwConfig};
 
-/// After implementing [`EguiOverlay`], just call this function with your app data
-pub fn start<T: EguiOverlay + 'static>(user_data: T) {
-    let mut glfw_backend = GlfwBackend::new(GlfwConfig {
-        // this closure will be called before creating a window
-        glfw_callback: Box::new(|gtx| {
-            // some defualt hints. it is empty atm, but in future we might add some convenience hints to it.
-            (egui_window_glfw_passthrough::GlfwConfig::default().glfw_callback)(gtx);
-            // scale the window size based on monitor scale. as 800x600 looks too small on a 4k screen, compared to a hd screen in absolute pixel sizes.
-            gtx.window_hint(egui_window_glfw_passthrough::glfw::WindowHint::ScaleToMonitor(true));
-        }),
-        #[cfg(feature = "three_d")]
-        opengl_window: Some(true), // opengl for non-macos, for faster compilation and less wgpu bloat. also, drivers are better with gl transparency than vk
-        #[cfg(feature = "wgpu")]
-        opengl_window: Some(false), // macos doesn't support opengl.
-        transparent_window: Some(true),
-        ..Default::default()
-    });
+/// After implementing [`EguiOverlay`], just call this function with your app data and config
+pub fn start<T: EguiOverlay + 'static>(user_data: T, config: GlfwConfig) {
+    let mut glfw_backend = GlfwBackend::new(config);
     // always on top
     glfw_backend.window.set_floating(true);
     // disable borders/titlebar

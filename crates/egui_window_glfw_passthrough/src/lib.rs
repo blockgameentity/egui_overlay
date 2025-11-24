@@ -61,6 +61,8 @@ pub struct GlfwBackend {
     pub passthrough: bool,
     pub transparent: bool,
     pub shown: bool,
+    /// whether to disable content scaling (DPI scaling)
+    pub disable_content_scaling: bool,
     // #[cfg(feature = "wayland")]
     // pub input_region: wayland_client::protocol::wl_region::WlRegion,
     pub events_receiver: glfw::GlfwReceiver<(f64, WindowEvent)>,
@@ -87,7 +89,7 @@ pub struct GlfwConfig {
     pub transparent_window: Option<bool>,
     /// whether the window will be opengl or non-opengl (vulkan, metal etc..)
     /// It will be opengl window on windows/linux, and non-opengl on linux.
-    /// If you want to use this with wgpu/vulkan etc.. or create your own gl context using egl, set this to false
+    /// If you want to use this with wgpu/vulkan etc.. or create your own gl context, set this to false
     pub opengl_window: Option<bool>,
     /// This callback is called with `&mut Glfw` just before creating a window
     /// All advanced configuration can be done here. eg: opengl settings such as gl version, depth/stencil bits etc..
@@ -95,6 +97,8 @@ pub struct GlfwConfig {
     /// This will be called right after window creation and setting event polling.
     /// you can use this to do things at startup like resizing, changing title, changing to fullscreen etc..
     pub window_callback: WindowCallback,
+    /// whether to disable content scaling (DPI scaling)
+    pub disable_content_scaling: bool,
 }
 impl Default for GlfwConfig {
     fn default() -> Self {
@@ -105,6 +109,7 @@ impl Default for GlfwConfig {
             transparent_window: None,
             opengl_window: None,
             size: [800, 600],
+            disable_content_scaling: false,
         }
     }
 }
@@ -121,6 +126,7 @@ impl GlfwBackend {
             opengl_window,
             glfw_callback,
             window_callback,
+            disable_content_scaling,
         } = config;
 
         if let Some(transparent) = transparent_window {
@@ -177,9 +183,15 @@ impl GlfwBackend {
             window.set_store_lock_key_mods(should_poll);
         }
         #[cfg(not(target_os = "emscripten"))]
-        let scale = window.get_content_scale().0;
+        let scale = if disable_content_scaling {
+            1.0
+        } else {
+            window.get_content_scale().0
+        };
         #[cfg(target_os = "emscripten")]
-        let scale = {
+        let scale = if disable_content_scaling {
+            1.0
+        } else {
             let scale = unsafe { emscripten_get_device_pixel_ratio() } as f32;
             if scale != 1.0 {
                 let width = (800.0 * scale) as i32;
@@ -275,6 +287,7 @@ impl GlfwBackend {
             passthrough: pass,
             transparent,
             shown: false,
+            disable_content_scaling,
         }
     }
     /// returns raw input and scale. `scale` is only Some, if it changed (or if first frame). Otherwise it just returns None.
@@ -505,25 +518,34 @@ impl GlfwBackend {
                 }),
                 glfw::WindowEvent::Char(c) => Some(Event::Text(c.to_string())),
                 glfw::WindowEvent::ContentScale(x, _) => {
-                    tracing::info!(
-                        previous_scale = self.scale,
-                        current_scale = x,
-                        "content scale changed"
-                    );
-                    self.scale = x;
-                    scale = Some(x);
-                    self.window_size_logical = [
-                        self.framebuffer_size_physical[0] as f32 / self.scale,
-                        self.framebuffer_size_physical[1] as f32 / self.scale,
-                    ];
-                    self.raw_input.screen_rect = Some(egui::Rect::from_two_pos(
-                        Default::default(),
-                        self.window_size_logical.into(),
-                    ));
-                    let (virtual_width, virtual_height) = self.window.get_size();
-                    let pixels_per_virtual_unit =
-                        self.framebuffer_size_physical[0] as f32 / virtual_width as f32;
-                    None
+                    if self.disable_content_scaling {
+                        tracing::info!(
+                            previous_scale = self.scale,
+                            current_scale = x,
+                            "content scale changed (ignored)"
+                        );
+                        None
+                    } else {
+                        tracing::info!(
+                            previous_scale = self.scale,
+                            current_scale = x,
+                            "content scale changed"
+                        );
+                        self.scale = x;
+                        scale = Some(x);
+                        self.window_size_logical = [
+                            self.framebuffer_size_physical[0] as f32 / self.scale,
+                            self.framebuffer_size_physical[1] as f32 / self.scale,
+                        ];
+                        self.raw_input.screen_rect = Some(egui::Rect::from_two_pos(
+                            Default::default(),
+                            self.window_size_logical.into(),
+                        ));
+                        let (virtual_width, virtual_height) = self.window.get_size();
+                        let pixels_per_virtual_unit =
+                            self.framebuffer_size_physical[0] as f32 / virtual_width as f32;
+                        None
+                    }
                 }
                 glfw::WindowEvent::Close => {
                     self.window.set_should_close(true);
@@ -580,11 +602,7 @@ impl GlfwBackend {
                         None
                     }
                     #[cfg(target_os = "emscripten")]
-                    if c {
-                        None
-                    } else {
-                        Some(Event::PointerGone)
-                    }
+                    if c { None } else { Some(Event::PointerGone) }
                 }
                 WindowEvent::Focus(f) => {
                     self.focused = f;
